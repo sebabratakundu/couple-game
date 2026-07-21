@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, CuboidCollider, BallCollider, CylinderCollider, Physics } from '@react-three/rapier';
 import { Text, Billboard } from '@react-three/drei';
@@ -6,16 +6,16 @@ import * as THREE from 'three';
 import { useGame } from '../store';
 
 /**
- * BowlingScene — a full standalone 3D bowling alley experience with real physics.
+ * BowlingScene — full 3D bowling with real physics.
  * Controls:
  *  - Mouse move: aim left/right (angle)
- *  - Hold left click: charge power
+ *  - Hold left mouse: charge power
  *  - Release: throw ball
  *  - ESC: return to park
  */
 export default function BowlingScene({ onExit }) {
   return (
-    <Physics gravity={[0, -14, 0]}>
+    <Physics gravity={[0, -14, 0]} timeStep={1 / 60}>
       <BowlingInner onExit={onExit} />
     </Physics>
   );
@@ -23,22 +23,33 @@ export default function BowlingScene({ onExit }) {
 
 function BowlingInner({ onExit }) {
   const { camera, gl } = useThree();
-  const [pins, setPins] = useState(() => buildPins(0));
+  const pinsRef = useRef([]); // { id, pos, ref }
+  const [pinsVersion, setPinsVersion] = useState(0); // increments to trigger re-render
   const [ballKey, setBallKey] = useState(0);
   const [score, setScore] = useState(0);
   const [frame, setFrame] = useState(1);
   const [rolls, setRolls] = useState(0);
   const [message, setMessage] = useState('Hold LEFT MOUSE to charge, release to throw. Move mouse to aim.');
+  const [gameOver, setGameOver] = useState(false);
   const ballBody = useRef();
   const aim = useRef(0);
   const power = useRef(0);
   const charging = useRef(false);
   const ballReady = useRef(true);
+  const gameOverRef = useRef(false);
   const settleTimer = useRef(null);
   const addLove = useGame((s) => s.addLove);
   const addMemory = useGame((s) => s.addMemory);
   const registerMinigameWin = useGame((s) => s.registerMinigameWin);
-  const finalizedRef = useRef(false);
+
+  // Initialize pins once
+  useEffect(() => {
+    pinsRef.current = buildPinsData(0);
+    setPinsVersion((v) => v + 1);
+    return () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    };
+  }, []);
 
   // Camera setup once
   useEffect(() => {
@@ -48,19 +59,22 @@ function BowlingInner({ onExit }) {
 
   // Aim & shoot handlers on canvas
   useEffect(() => {
-    const dom = gl.domElement;
+    const dom = gl && gl.domElement;
+    if (!dom) return;
     const onMove = (e) => {
       const rect = dom.getBoundingClientRect();
       const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       aim.current = THREE.MathUtils.clamp(nx * 0.55, -0.55, 0.55);
     };
     const onDown = (e) => {
-      if (e.button !== 0 || !ballReady.current) return;
+      if (e.button !== 0) return;
+      if (!ballReady.current || gameOverRef.current) return;
       charging.current = true;
       power.current = 0;
     };
     const onUp = (e) => {
-      if (e.button !== 0 || !charging.current) return;
+      if (e.button !== 0) return;
+      if (!charging.current) return;
       charging.current = false;
       throwBall();
     };
@@ -77,6 +91,7 @@ function BowlingInner({ onExit }) {
       dom.removeEventListener('mouseup', onUp);
       window.removeEventListener('keydown', onKey);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, onExit]);
 
   useFrame((_, delta) => {
@@ -86,124 +101,160 @@ function BowlingInner({ onExit }) {
   });
 
   function throwBall() {
-    if (!ballBody.current || !ballReady.current) return;
-    ballReady.current = false;
-    const p = Math.max(0.35, power.current);
-    const forwardVel = -22 * p; // -Z is forward
-    const sideVel = aim.current * 4;
-    ballBody.current.setLinvel({ x: sideVel, y: 0, z: forwardVel }, true);
-    ballBody.current.setAngvel({ x: -8 * p, y: 0, z: 0 }, true);
-    power.current = 0;
-    setMessage('Rolling...');
-    // wait 3s then evaluate
-    settleTimer.current = setTimeout(evaluateThrow, 3200);
+    try {
+      if (!ballBody.current || !ballReady.current || gameOverRef.current) return;
+      ballReady.current = false;
+      const p = Math.max(0.35, power.current);
+      const forwardVel = -22 * p;
+      const sideVel = aim.current * 4;
+      if (typeof ballBody.current.setLinvel === 'function') {
+        ballBody.current.setLinvel({ x: sideVel, y: 0, z: forwardVel }, true);
+      }
+      if (typeof ballBody.current.setAngvel === 'function') {
+        ballBody.current.setAngvel({ x: -8 * p, y: 0, z: 0 }, true);
+      }
+      power.current = 0;
+      setMessage('Rolling...');
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(evaluateThrow, 3200);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Bowling throw error:', err);
+    }
   }
 
   function evaluateThrow() {
-    // Count knocked pins by checking their world y position
-    let downed = 0;
-    let stillStanding = [];
-    pins.forEach((p) => {
-      const b = p.ref.current;
-      if (!b) return;
-      const t = b.translation();
-      const q = b.rotation();
-      // A pin is "down" if its center dropped noticeably or tilted heavily
-      if (t.y < 0.35 || Math.abs(q.x) > 0.35 || Math.abs(q.z) > 0.35) {
-        downed++;
+    try {
+      let downed = 0;
+      const currentPins = pinsRef.current || [];
+      currentPins.forEach((p) => {
+        try {
+          const b = p.ref && p.ref.current;
+          if (!b || typeof b.translation !== 'function') return;
+          const t = b.translation();
+          const q = typeof b.rotation === 'function' ? b.rotation() : { x: 0, y: 0, z: 0, w: 1 };
+          if (
+            (t && typeof t.y === 'number' && t.y < 0.35) ||
+            (q && typeof q.x === 'number' && Math.abs(q.x) > 0.35) ||
+            (q && typeof q.z === 'number' && Math.abs(q.z) > 0.35)
+          ) {
+            downed++;
+          }
+        } catch (err) {
+          // ignore single-pin read errors
+        }
+      });
+      const roundScore = Math.min(10, downed);
+      setScore((s) => s + roundScore);
+      setMessage(
+        roundScore === 10
+          ? 'STRIKE! 🎳'
+          : roundScore >= 7
+          ? `Great! ${roundScore} pins down`
+          : roundScore >= 4
+          ? `Nice — ${roundScore} pins`
+          : `${roundScore} pins — try again`
+      );
+
+      const nextRolls = rolls + 1;
+      const advanceFrame = nextRolls >= 2 || roundScore === 10;
+      if (advanceFrame) {
+        const nextFrame = frame + 1;
+        setFrame(nextFrame);
+        setRolls(0);
+        if (nextFrame > 3) {
+          // Game over — finalize
+          finalizeGame(score + roundScore);
+        } else {
+          setTimeout(() => {
+            pinsRef.current = buildPinsData(Date.now());
+            setPinsVersion((v) => v + 1);
+          }, 900);
+        }
       } else {
-        stillStanding.push(p);
+        setRolls(nextRolls);
       }
-    });
-    const roundScore = downed;
-    setScore((s) => s + roundScore);
-    setMessage(roundScore === 10 ? 'STRIKE! 🎳' : roundScore >= 7 ? `Great! ${roundScore} pins down` : roundScore >= 4 ? `Nice — ${roundScore} pins` : `${roundScore} pins — try again`);
-    // Advance frame/rolls
-    const nextRolls = rolls + 1;
-    if (nextRolls >= 2 || roundScore === 10) {
-      setFrame((f) => f + 1);
-      setRolls(0);
-      // Reset pins with slight delay
+
       setTimeout(() => {
-        setPins(buildPins(Date.now()));
-      }, 900);
-    } else {
-      setRolls(nextRolls);
-    }
-    // Reset ball
-    setTimeout(() => {
+        setBallKey((k) => k + 1);
+        ballReady.current = true;
+      }, 1000);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Bowling evaluate error:', err);
+      // recover — allow next throw
       setBallKey((k) => k + 1);
       ballReady.current = true;
-    }, 1000);
+    }
   }
 
-  useEffect(() => {
-    if (frame > 3 && !finalizedRef.current) {
-      finalizedRef.current = true;
-      const total = score;
-      addLove(total * 3, 'Bowling winnings');
-      if (total >= 20) {
-        registerMinigameWin();
-        addMemory({
-          id: 'won_bowling', title: 'Won Bowling', location: 'Carnival Alley',
-          description: 'Ten pins, one perfect throw, one very impressed girlfriend.', emoji: '🎳',
-        });
-      }
-      setMessage(`Game over — final score ${total}. Earned ${total * 3} ❤️`);
+  function finalizeGame(total) {
+    if (gameOverRef.current) return;
+    gameOverRef.current = true;
+    setGameOver(true);
+    const love = total * 3;
+    addLove(love, 'Bowling winnings');
+    if (total >= 20) {
+      registerMinigameWin();
+      addMemory({
+        id: 'won_bowling',
+        title: 'Won Bowling',
+        location: 'Carnival Alley',
+        description: 'Ten pins, one perfect throw, one very impressed girlfriend.',
+        emoji: '🎳',
+      });
     }
-  }, [frame, score, addLove, addMemory, registerMinigameWin]);
+    setMessage(`Game over! Score: ${total}. Earned ${love} ❤ · Press ESC to return`);
+  }
+
+  const pinsToRender = pinsRef.current || [];
 
   return (
     <group>
-      {/* Warm sun */}
       <ambientLight intensity={0.6} color="#fff2d0" />
       <directionalLight position={[10, 20, 8]} intensity={1.5} color="#fff5e0" castShadow />
       <hemisphereLight args={['#ffe1d0', '#5a3a24', 0.55]} />
 
-      {/* Building / alley */}
-      <group>
-        {/* Floor */}
-        <RigidBody type="fixed" colliders={false}>
-          <CuboidCollider args={[3, 0.1, 15]} position={[0, -0.1, -8]} />
-          <mesh receiveShadow position={[0, -0.1, -8]}>
-            <boxGeometry args={[6, 0.2, 30]} />
-            <meshStandardMaterial color="#e6c88a" roughness={0.5} />
-          </mesh>
-        </RigidBody>
-        {/* Alley polished lane */}
-        <mesh position={[0, 0.01, -9]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[1.6, 20]} />
-          <meshStandardMaterial color="#f4d99a" roughness={0.15} metalness={0.1} />
+      {/* Floor with collider */}
+      <RigidBody type="fixed" colliders={false}>
+        <CuboidCollider args={[3, 0.1, 15]} position={[0, -0.1, -8]} />
+        <mesh receiveShadow position={[0, -0.1, -8]}>
+          <boxGeometry args={[6, 0.2, 30]} />
+          <meshStandardMaterial color="#e6c88a" roughness={0.5} />
         </mesh>
-        {/* Gutters */}
-        <RigidBody type="fixed" colliders={false}>
-          <CuboidCollider args={[0.2, 0.15, 10]} position={[-1.0, 0.05, -9]} />
-          <mesh position={[-1.0, 0.05, -9]}>
-            <boxGeometry args={[0.4, 0.3, 20]} />
-            <meshStandardMaterial color="#5b3a24" />
-          </mesh>
-          <CuboidCollider args={[0.2, 0.15, 10]} position={[1.0, 0.05, -9]} />
-          <mesh position={[1.0, 0.05, -9]}>
-            <boxGeometry args={[0.4, 0.3, 20]} />
-            <meshStandardMaterial color="#5b3a24" />
-          </mesh>
-        </RigidBody>
-        {/* End wall */}
-        <RigidBody type="fixed">
-          <mesh position={[0, 1.2, -18]}>
-            <boxGeometry args={[8, 2.4, 0.3]} />
-            <meshStandardMaterial color="#c9a074" />
-          </mesh>
-        </RigidBody>
-        {/* Ceiling banner */}
-        <Billboard position={[0, 3, -6]}>
-          <Text fontSize={0.7} color="#3a1c50" outlineColor="#ffffff" outlineWidth={0.03}>Anniversary Alley 🎳</Text>
-        </Billboard>
-      </group>
+      </RigidBody>
+
+      {/* Polished lane */}
+      <mesh position={[0, 0.01, -9]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[1.6, 20]} />
+        <meshStandardMaterial color="#f4d99a" roughness={0.15} metalness={0.1} />
+      </mesh>
+
+      {/* Gutters */}
+      <RigidBody type="fixed" colliders={false}>
+        <CuboidCollider args={[0.2, 0.15, 10]} position={[-1.0, 0.05, -9]} />
+        <mesh position={[-1.0, 0.05, -9]}>
+          <boxGeometry args={[0.4, 0.3, 20]} />
+          <meshStandardMaterial color="#5b3a24" />
+        </mesh>
+        <CuboidCollider args={[0.2, 0.15, 10]} position={[1.0, 0.05, -9]} />
+        <mesh position={[1.0, 0.05, -9]}>
+          <boxGeometry args={[0.4, 0.3, 20]} />
+          <meshStandardMaterial color="#5b3a24" />
+        </mesh>
+      </RigidBody>
+
+      {/* End wall */}
+      <RigidBody type="fixed">
+        <mesh position={[0, 1.2, -18]}>
+          <boxGeometry args={[8, 2.4, 0.3]} />
+          <meshStandardMaterial color="#c9a074" />
+        </mesh>
+      </RigidBody>
 
       {/* Pins */}
-      {pins.map((p) => (
-        <Pin key={p.id} refBody={p.ref} position={p.pos} />
+      {pinsToRender.map((p) => (
+        <Pin key={`${p.id}_${pinsVersion}`} refBody={p.ref} position={p.pos} />
       ))}
 
       {/* Ball */}
@@ -222,7 +273,6 @@ function BowlingInner({ onExit }) {
           <sphereGeometry args={[0.22, 24, 24]} />
           <meshStandardMaterial color="#c94b6b" metalness={0.4} roughness={0.25} />
         </mesh>
-        {/* Ball holes */}
         <mesh position={[0, 0.15, 0.16]}>
           <sphereGeometry args={[0.03, 8, 8]} />
           <meshStandardMaterial color="#3a1c50" />
@@ -234,6 +284,11 @@ function BowlingInner({ onExit }) {
         <planeGeometry args={[0.08, 12]} />
         <meshBasicMaterial color="#ff5c8a" transparent opacity={0.4} />
       </mesh>
+
+      {/* Banner */}
+      <Billboard position={[0, 3, -6]}>
+        <Text fontSize={0.5} color="#3a1c50" outlineColor="#ffffff" outlineWidth={0.03}>Anniversary Alley 🎳</Text>
+      </Billboard>
 
       {/* Score board */}
       <Billboard position={[0, 2.3, -18]}>
@@ -276,8 +331,7 @@ function Pin({ refBody, position }) {
   );
 }
 
-function buildPins(seed) {
-  // Standard triangle formation
+function buildPinsData(seed) {
   const spacing = 0.24;
   const rows = 4;
   const pins = [];

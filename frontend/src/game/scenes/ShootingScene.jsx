@@ -74,44 +74,39 @@ export default function ShootingScene({ onExit }) {
 
   function shoot() {
     raycaster.setFromCamera(reticle.current, camera);
-    // Simple hit-test against tracked targets
+    const now = performance.now() / 1000;
     let closestIdx = -1;
     let closestDist = Infinity;
     targets.forEach((t, i) => {
-      const pos = new THREE.Vector3(t.pos[0], t.pos[1], t.pos[2]);
-      // Distance from ray to target center
+      // Compute current animated position
+      const cx = t.baseX + Math.sin(now * t.speed + t.phase) * t.range;
+      const cy = t.pos[1] + Math.sin(now * 3 + t.phase) * 0.15;
+      const pos = new THREE.Vector3(cx, cy, t.pos[2]);
       const rayToTarget = pos.clone().sub(raycaster.ray.origin);
       const proj = rayToTarget.dot(raycaster.ray.direction);
       if (proj < 0) return;
       const closestPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(proj));
       const dist = pos.distanceTo(closestPoint);
-      if (dist < t.radius && proj < closestDist) {
+      if (dist < t.radius * 1.4 && proj < closestDist) {
         closestDist = proj;
         closestIdx = i;
       }
     });
     if (closestIdx >= 0) {
       const target = targets[closestIdx];
+      const cx = target.baseX + Math.sin(now * target.speed + target.phase) * target.range;
+      const cy = target.pos[1] + Math.sin(now * 3 + target.phase) * 0.15;
       setScore((s) => s + target.value);
       setMessage(`+${target.value} 🎯 ${target.value >= 20 ? 'GREAT SHOT!' : 'Nice!'}`);
-      // Remove hit target, add floating hit indicator
       setTargets((ts) => ts.filter((_, i) => i !== closestIdx).concat(spawnOne()));
-      setHits((h) => [...h.slice(-4), { pos: target.pos, ts: Date.now(), value: target.value }]);
+      setHits((h) => [...h.slice(-4), { pos: [cx, cy, target.pos[2]], ts: Date.now(), value: target.value }]);
     } else {
       setMessage('Missed…');
     }
   }
 
   useFrame(({ clock }) => {
-    // Animate targets side-to-side
-    setTargets((ts) => ts.map((t) => ({
-      ...t,
-      pos: [
-        t.baseX + Math.sin(clock.elapsedTime * t.speed + t.phase) * t.range,
-        t.pos[1],
-        t.pos[2],
-      ],
-    })));
+    // No setState in useFrame — let each Target animate itself internally
   });
 
   return (
@@ -168,8 +163,11 @@ function Target({ target }) {
   const ref = useRef();
   useFrame(({ clock }) => {
     if (ref.current) {
-      ref.current.position.set(target.pos[0], target.pos[1] + Math.sin(clock.elapsedTime * 3 + target.phase) * 0.15, target.pos[2]);
-      ref.current.rotation.z = Math.sin(clock.elapsedTime * 2 + target.phase) * 0.05;
+      const t = clock.elapsedTime;
+      const x = target.baseX + Math.sin(t * target.speed + target.phase) * target.range;
+      const y = target.pos[1] + Math.sin(t * 3 + target.phase) * 0.15;
+      ref.current.position.set(x, y, target.pos[2]);
+      ref.current.rotation.z = Math.sin(t * 2 + target.phase) * 0.05;
     }
   });
   if (target.kind === 'balloon') {

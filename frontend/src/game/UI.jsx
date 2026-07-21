@@ -66,6 +66,8 @@ export function HUD() {
         useGame.setState({ ropewayUnlocked: true, atSummit: true, onRopeway: false, timeOfDay: 0.82 });
       }
       if (e.key === "'") useGame.getState().triggerEnding();
+      if (e.key === 'b') useGame.getState().setActiveScene('bowling');
+      if (e.key === 'B') useGame.getState().setActiveScene('bowling');
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);

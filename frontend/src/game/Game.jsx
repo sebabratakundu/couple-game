@@ -16,6 +16,7 @@ import BoatScene from './scenes/BoatScene';
 import CoasterScene from './scenes/CoasterScene';
 import ShootingScene from './scenes/ShootingScene';
 import FoodShareScene from './scenes/FoodShareScene';
+import SceneErrorBoundary from './SceneErrorBoundary';
 import { unlockAudio, playPark, playSummit, stopAll } from './audio';
 import * as THREE from 'three';
 
