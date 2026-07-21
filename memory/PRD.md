@@ -97,3 +97,23 @@ A stylized, non-combat, semi-realistic 3D anniversary gift game where a couple e
     ├── CoasterScene     — Spline ride
     └── ShootingScene    — 3D raycast
 ```
+
+## Pass 4 Delivered
+- **Procedural ambient audio (Web Audio API)** — no external assets or CORS:
+  - Park: filtered noise wind + Cmaj sine pad with LFO shimmer + random bird chirps every 3–8s
+  - Summit: Cmaj7→Fmaj7→Am→G soft piano progression (~6s per chord) + distant low wind
+  - Chime SFX on food-scene entry
+  - Mute button in HUD (🔊/🔇)
+- **Shared-eating cinematic (FoodShareScene)** — all 4 food stalls now trigger a 14s scene:
+  - Round table, two chairs, both characters sitting facing each other with head-look
+  - Slow orbiting camera
+  - Food modeled in 3D (ice cream cone, pizza with cheese blobs, cotton candy on stick, two coffee cups with steam)
+  - Floating hearts, 4 rotating captions per food, background trees + wildflowers + benches
+- **Score balancing tuned**: Bowling 3× pin score (~90 max), Ferris 50, Boat 60, Coaster 70, Shooting 1:1 (~100 max), Food 35-45 each, Selfie 5, Duck 15, Gazebo 30, Collectible 25-30. Total achievable ~800+ makes 500 comfortable via natural play.
+
+## Test Report Summary (iteration_1.json)
+- 100% frontend PASS. Zero console errors. Ending cinematic fully personalized. All debug shortcuts verified.
+- Reviewer note: MuteButton uses local state; if global mute needed later, promote to Zustand.
+
+## Skipped Deliberately
+- Quaternius glTF characters — requires paid/hosted rigged assets + CORS-safe hosting. Procedural characters (Character.jsx) remain the practical ceiling.
