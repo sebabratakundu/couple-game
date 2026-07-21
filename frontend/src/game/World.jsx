@@ -51,12 +51,16 @@ export default function World({ registerInteractables }) {
       });
     }
 
-    // Food stalls
+    // Food stalls — now trigger cinematic shared-eating scenes
     const foods = [
-      { id: 'food_ice', pos: [15, 0, 8], label: 'Share Ice Cream', title: 'Shared Ice Cream', emoji: '🍦', desc: 'She gave you the last bite. Some things never change.' },
-      { id: 'food_pizza', pos: [19, 0, 12], label: 'Share Pizza Slice', title: 'Pizza Bliss', emoji: '🍕', desc: 'Extra cheese, extra love.' },
-      { id: 'food_cotton', pos: [22, 0, 6], label: 'Share Cotton Candy', title: 'Cotton Candy Kiss', emoji: '🍭', desc: 'Pink sugar clouds and a sticky little kiss.' },
-      { id: 'food_coffee', pos: [11, 0, 12], label: 'Coffee for two', title: 'Warm Coffee Together', emoji: '☕', desc: 'Steam curled up like tiny hearts.' },
+      { id: 'food_ice', pos: [15, 0, 8], label: 'Share Ice Cream 🍦', name: 'Ice Cream', type: 'ice_cream', emoji: '🍦', title: 'Shared Ice Cream', desc: 'She gave you the last bite. Some things never change.', love: 45,
+        captions: ['Two scoops, one cone…', 'She stole a lick 😄', 'Sticky fingers, sweet smiles', 'You’d share every scoop with her.'] },
+      { id: 'food_pizza', pos: [19, 0, 12], label: 'Share Pizza Slice 🍕', name: 'Pizza', type: 'pizza', emoji: '🍕', title: 'Pizza Bliss', desc: 'Extra cheese, extra love.', love: 40,
+        captions: ['One slice, two mouths.', 'Cheese pull! 🧀', 'She saved you the last bite.', 'Extra pepperoni, extra love.'] },
+      { id: 'food_cotton', pos: [22, 0, 6], label: 'Share Cotton Candy 🍭', name: 'Cotton Candy', type: 'cotton_candy', emoji: '🍭', title: 'Cotton Candy Kiss', desc: 'Pink sugar clouds and a sticky little kiss.', love: 40,
+        captions: ['Pink sugar cloud ☁', 'Her lips turned pink.', 'You leaned in for a taste.', 'That was worth every calorie.'] },
+      { id: 'food_coffee', pos: [11, 0, 12], label: 'Coffee for Two ☕', name: 'Coffee for Two', type: 'coffee', emoji: '☕', title: 'Warm Coffee Together', desc: 'Steam curled up like tiny hearts.', love: 35,
+        captions: ['Two cappuccinos, one heart.', 'Steam curled between you.', 'You made her laugh mid-sip.', 'Perfect little pause together.'] },
     ];
     for (const f of foods) {
       list.push({
@@ -64,18 +68,15 @@ export default function World({ registerInteractables }) {
         pos: f.pos,
         label: f.label,
         onInteract: () => {
-          addLove(20, f.title);
-          addMemory({ id: f.id, title: f.title, location: 'Food Street', description: f.desc, emoji: f.emoji });
-          registerFoodShared();
-          registerActivity();
+          useGame.getState().setActiveScene('food', f);
         },
       });
     }
 
     // Boat (rowing experience)
     list.push({
-      id: 'boat', pos: [42, 0, 22], label: 'Rent a Boat',
-      onInteract: () => useGame.getState().setActiveRide('boat'),
+      id: 'boat', pos: [42, 0, 22], label: 'Rent a Boat 🚣',
+      onInteract: () => useGame.getState().setActiveScene('boat'),
     });
 
     // Mini-games

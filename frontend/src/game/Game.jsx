@@ -15,6 +15,8 @@ import FerrisWheelScene from './scenes/FerrisWheelScene';
 import BoatScene from './scenes/BoatScene';
 import CoasterScene from './scenes/CoasterScene';
 import ShootingScene from './scenes/ShootingScene';
+import FoodShareScene from './scenes/FoodShareScene';
+import { unlockAudio, playPark, playSummit, stopAll } from './audio';
 import * as THREE from 'three';
 
 export default function Game() {
@@ -28,8 +30,20 @@ export default function Game() {
   const setLst = useCallback((l) => setInteractables(l), []);
   const summitInteractables = useMemo(() => [], []);
 
+  const foodShareData = useGame((s) => s.foodShareData);
+
+  // Music orchestration
+  React.useEffect(() => {
+    if (!started) return;
+    if (atSummit) playSummit();
+    else playPark();
+  }, [started, atSummit]);
+  React.useEffect(() => {
+    return () => stopAll();
+  }, []);
+
   return (
-    <div className="game-root" data-testid="game-root">
+    <div className="game-root" data-testid="game-root" onClick={() => unlockAudio()} onKeyDown={() => unlockAudio()}>
       {started && (
         <Canvas
           shadows
@@ -52,6 +66,8 @@ export default function Game() {
               <CoasterScene onExit={() => setActiveScene(null)} />
             ) : activeScene === 'shooting' ? (
               <ShootingScene onExit={() => setActiveScene(null)} />
+            ) : activeScene === 'food' && foodShareData ? (
+              <FoodShareScene food={foodShareData} onExit={() => setActiveScene(null)} />
             ) : (
               <>
                 <SkyRig />

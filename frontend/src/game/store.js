@@ -37,7 +37,8 @@ export const useGame = create((set, get) => ({
   // Interactions
   nearbyInteraction: null, // { id, label, action }
   activeMinigame: null, // 'ringtoss' | 'shooting' | 'dance' | null
-  activeScene: null, // 'bowling' | 'ferris' | 'coaster' | 'boat' | null - in-world 3D scenes
+  activeScene: null, // 'bowling' | 'ferris' | 'coaster' | 'boat' | 'shooting' | 'food' | null
+  foodShareData: null,
   toast: null,
 
   // Actions
@@ -46,7 +47,7 @@ export const useGame = create((set, get) => ({
   setPaused: (p) => set({ paused: p }),
   setNearby: (i) => set({ nearbyInteraction: i }),
   setActiveMinigame: (m) => set({ activeMinigame: m, paused: !!m }),
-  setActiveScene: (s) => set({ activeScene: s, paused: !!s }),
+  setActiveScene: (s, data = null) => set({ activeScene: s, paused: !!s, foodShareData: data }),
   setActiveRide: (r) => set({ activeRide: r, paused: !!r }),
   endRide: (rewardTitle, rewardLove, memory) => {
     const state = get();

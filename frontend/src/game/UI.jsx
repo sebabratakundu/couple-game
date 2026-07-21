@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from './store';
 import { timeLabel } from './utils';
+import { setMuted } from './audio';
 export function StartScreen() {
   const start = useGame((s) => s.start);
   const partnerName = useGame((s) => s.partnerName);
@@ -95,6 +96,7 @@ export function HUD() {
             📖 Journal <span className="hud-badge">{memories.length}</span>
           </button>
           <div className="hud-photos">📸 {photos}</div>
+          <MuteButton />
         </div>
       </div>
     </>
@@ -146,5 +148,19 @@ export function Scrapbook() {
         )}
       </div>
     </div>
+  );
+}
+
+function MuteButton() {
+  const [muted, setLocalMuted] = React.useState(false);
+  return (
+    <button
+      className="hud-btn"
+      data-testid="hud-mute-btn"
+      onClick={() => { const n = !muted; setLocalMuted(n); setMuted(n); }}
+      title={muted ? 'Unmute music' : 'Mute music'}
+    >
+      {muted ? '🔇' : '🔊'}
+    </button>
   );
 }
